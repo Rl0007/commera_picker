@@ -17,7 +17,7 @@ import {
 	usePlugin,
 	usePolling,
 } from '@commera/admin'
-import { STATES, useLogOut } from '../../shared/picking'
+import { STATES, submitRequest, useLogOut } from '../../shared/picking'
 
 const { navigate } = usePlugin()
 const logOut = useLogOut()
@@ -47,17 +47,14 @@ const tabs = computed(() =>
 )
 
 async function openPickList(pickList) {
-	const claimable = state.value === STATES.open || state.value === STATES.onHold
-	if (claimable) {
-		await openRequest.submit({ name: pickList.name })
-		if (openRequest.error) return listRequest.reload()
+	if (state.value !== STATES.readyToShip && !(await submitRequest(openRequest, { name: pickList.name }))) {
+		return listRequest.reload()
 	}
 	navigate(`picking/${pickList.name}`)
 }
 
 async function pickNext() {
-	await pickNextRequest.submit()
-	if (pickNextRequest.error) return listRequest.reload()
+	if (!(await submitRequest(pickNextRequest))) return listRequest.reload()
 	navigate(`picking/${pickNextRequest.data.name}`)
 }
 
@@ -123,7 +120,7 @@ pageHeader.setActions([
 						variant="solid"
 						class="tabular-nums"
 						:label="String(pickList.article_count)"
-						:aria-label="__('{0} articles', [pickList.article_count])"
+						:aria-label="__('Articles: {0}', [pickList.article_count])"
 					/>
 				</button>
 			</li>

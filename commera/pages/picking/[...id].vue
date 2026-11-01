@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Alert, Badge, Button, Dialog, TextInput } from 'frappe-ui'
 import {
 	EmptyState,
@@ -12,7 +12,7 @@ import {
 	usePlugin,
 } from '@commera/admin'
 import BarcodeScanner from '../../components/BarcodeScanner.vue'
-import { STATES, errorText, textFromHtml } from '../../shared/picking'
+import { STATES, errorText, submitRequest, textFromHtml } from '../../shared/picking'
 
 const props = defineProps({ id: String })
 const { navigate, toast } = usePlugin()
@@ -26,9 +26,15 @@ const unavailableRequest = useMethodAction('commera_picker.api.mark_unavailable'
 const holdRequest = useMethodAction('commera_picker.api.hold')
 const scanRequest = useMethodAction('commera_picker.api.scan', { quiet: true })
 
-const pickList = computed(() => pickListRequest.data)
+const pickList = ref(null)
+watch(
+	() => pickListRequest.data,
+	(data) => data && (pickList.value = data),
+	{ immediate: true }
+)
 const canPick = computed(() => pickList.value?.is_mine && pickList.value.state === STATES.inProgress)
 const canStart = computed(() => [STATES.open, STATES.onHold].includes(pickList.value?.state))
+const pickedByOther = computed(() => pickList.value?.assignee && !pickList.value.is_mine)
 const isReadyToShip = computed(() => pickList.value?.state === STATES.readyToShip)
 const allRows = computed(() => [...(pickList.value?.open_rows ?? []), ...(pickList.value?.picked_rows ?? [])])
 const totalWeight = computed(() =>
@@ -52,15 +58,14 @@ const pageHeader = usePage()
 pageHeader.setTitle(() => (pickList.value?.sales_order ? `#${pickList.value.sales_order}` : props.id))
 pageHeader.setBreadcrumbs([{ label: __('Picking'), to: 'picking' }])
 
-function adopt(request) {
-	if (request.error) return false
-	pickListRequest.data = request.data
+async function submitAndAdopt(request, params) {
+	if (!(await submitRequest(request, params))) return false
+	pickList.value = request.data
 	return true
 }
 
-async function startPicking() {
-	await openRequest.submit({ name: props.id })
-	adopt(openRequest)
+function startPicking() {
+	return submitAndAdopt(openRequest, { name: props.id })
 }
 
 function selectRow(row) {
@@ -71,13 +76,13 @@ function selectRow(row) {
 }
 
 async function confirmPicked() {
-	await pickRequest.submit({ name: props.id, row_name: selectedRow.value.name, qty: pickedQty.value })
-	if (adopt(pickRequest)) finishSelection()
+	const params = { name: props.id, row_name: selectedRow.value.name, qty: pickedQty.value }
+	if (await submitAndAdopt(pickRequest, params)) finishSelection()
 }
 
 async function markUnavailable() {
-	await unavailableRequest.submit({ name: props.id, row_name: selectedRow.value.name })
-	if (adopt(unavailableRequest)) finishSelection()
+	const params = { name: props.id, row_name: selectedRow.value.name }
+	if (await submitAndAdopt(unavailableRequest, params)) finishSelection()
 }
 
 function finishSelection() {
@@ -86,8 +91,7 @@ function finishSelection() {
 }
 
 async function holdOrder() {
-	await holdRequest.submit({ name: props.id })
-	if (holdRequest.error) return
+	if (!(await submitRequest(holdRequest, { name: props.id }))) return
 	toast.success(__('Order put on hold'))
 	navigate('picking')
 }
@@ -95,9 +99,8 @@ async function holdOrder() {
 async function scanBarcode(barcode) {
 	cameraOpen.value = false
 	scanError.value = ''
-	await scanRequest.submit({ name: props.id, barcode })
-	if (scanRequest.error) {
-		scanError.value = errorText(scanRequest.error)
+	if (!(await submitRequest(scanRequest, { name: props.id, barcode }))) {
+		scanError.value = errorText(scanRequest.error) || __('No article found for barcode {0}', [barcode])
 		return
 	}
 	selectRow(scanRequest.data)
@@ -137,7 +140,7 @@ function formatQty(qty) {
 
 	<EmptyState v-else-if="!pickList" icon="lucide-package" :title="__('Order not found')" />
 
-	<div v-else class="mx-auto flex w-full max-w-2xl flex-col gap-4 pb-24">
+	<div v-else class="mx-auto flex w-full max-w-2xl flex-col gap-4 pb-4">
 		<section class="rounded-5 border border-outline-gray-1 bg-surface-base p-3">
 			<div class="flex items-start gap-3">
 				<div class="min-w-0 flex-1">
@@ -182,6 +185,12 @@ function formatQty(qty) {
 		</section>
 
 		<Alert v-if="scanError" theme="red" :title="scanError" />
+
+		<Alert
+			v-if="pickedByOther && !isReadyToShip"
+			theme="amber"
+			:title="__('This order is already being picked by {0}', [pickList.assignee_name])"
+		/>
 
 		<Alert
 			v-if="isReadyToShip"
@@ -276,7 +285,7 @@ function formatQty(qty) {
 
 		<div
 			v-if="canPick || canStart"
-			class="fixed inset-x-0 bottom-0 flex gap-2 border-t border-outline-gray-1 bg-surface-base p-3 sm:sticky sm:rounded-5 sm:border"
+			class="sticky bottom-0 flex gap-2 rounded-5 border border-outline-gray-1 bg-surface-base p-3"
 		>
 			<template v-if="canPick">
 				<Button

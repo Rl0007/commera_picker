@@ -23,3 +23,12 @@ export function errorText(error) {
 	const message = error?.messages?.[0] || error?.message || ''
 	return textFromHtml(message.replace(/^\w+Error: /, ''))
 }
+
+export async function submitRequest(request, params) {
+	try {
+		await request.submit(params)
+	} catch {
+		return false
+	}
+	return !request.error
+}
