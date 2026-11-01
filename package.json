@@ -1,0 +1,14 @@
+{
+	"name": "commera_picker",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "vite build --config commera/vite.config.js"
+	},
+	"devDependencies": {
+		"@commera/plugin-kit": "link:../commera/packages/plugin-kit",
+		"@vitejs/plugin-vue": "^6.0.10",
+		"vite": "^8.3.4",
+		"vue": "^3.5.44"
+	}
+}
