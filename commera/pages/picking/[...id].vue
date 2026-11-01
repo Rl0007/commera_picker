@@ -184,7 +184,7 @@ function formatQty(qty) {
 			</div>
 		</section>
 
-		<Alert v-if="scanError" theme="red" :title="scanError" />
+		<Alert v-if="scanError" theme="red" :title="__('Wrong article')" :description="scanError" />
 
 		<Alert
 			v-if="pickedByOther && !isReadyToShip"
