@@ -38,11 +38,13 @@ def release_for_picking(sales_order: str) -> str:
 			)
 		)
 
+	# create_pick_list drops rows with no stock under parent_warehouse before returning, so set it in after_mapping.
 	frappe.flags.commera_picker_release = True
 	try:
 		pick_list = create_pick_list(sales_order)
 	finally:
 		frappe.flags.commera_picker_release = False
+	# Without pick_manually, before_save re-locates unpicked rows: new row names, and cut rows come back.
 	pick_list.pick_manually = 1
 	pick_list.insert()
 	return pick_list.name
@@ -303,6 +305,7 @@ def open_pick_list(name: str) -> dict:
 	frappe.has_permission("Pick List", "write", name, throw=True)
 	user = frappe.session.user
 
+	# Locking reads: a plain read sees this transaction's snapshot and misses another picker's committed claim.
 	state = frappe.db.get_value("Pick List", name, STATE_FIELD, for_update=True)
 	assignee = frappe.db.get_value(
 		"ToDo",
