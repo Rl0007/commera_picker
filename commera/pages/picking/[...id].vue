@@ -216,13 +216,13 @@ function formatQty(qty) {
 						<div class="flex min-w-0 flex-1 flex-col gap-1">
 							<div class="flex items-center gap-2">
 								<span
-									class="flex items-center gap-1 rounded-4 bg-surface-blue-2 px-1.5 py-0.5 text-sm font-medium text-ink-blue-7"
+									class="flex items-center gap-1 rounded-4 bg-surface-gray-3 px-1.5 py-0.5 text-sm font-semibold text-ink-gray-9"
 								>
 									<span class="lucide-map-pin size-3.5" aria-hidden="true" />
 									{{ row.bin }}
 								</span>
 								<span
-									class="flex items-center gap-1 rounded-4 bg-surface-gray-2 px-1.5 py-0.5 text-sm text-ink-gray-6 tabular-nums"
+									class="flex items-center gap-1 text-sm text-ink-gray-5 tabular-nums"
 									:title="__('Stock in this bin')"
 								>
 									<span class="lucide-boxes size-3.5" aria-hidden="true" />
@@ -239,9 +239,9 @@ function formatQty(qty) {
 						</div>
 						<Badge
 							size="lg"
-							variant="solid"
-							theme="blue"
-							class="tabular-nums"
+							variant="subtle"
+							theme="gray"
+							class="font-semibold tabular-nums"
 							:label="formatQty(row.qty)"
 						/>
 						<img
