@@ -1,4 +1,4 @@
-import commera from "@commera/plugin-kit/vite";
-import { defineConfig } from "vite";
+import commera from '@commera/plugin-kit/vite'
+import { defineConfig } from 'vite'
 
-export default defineConfig({ plugins: [commera()] });
+export default defineConfig({ plugins: [commera()] })
