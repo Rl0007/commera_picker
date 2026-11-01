@@ -107,6 +107,7 @@ class TestPicking(IntegrationTestCase):
 			[row["bin"] for row in picking["open_rows"]], sorted(row["bin"] for row in picking["open_rows"])
 		)
 		self.assertEqual(picking["comments"][0]["content"], "Leave at the back door")
+		self.assertEqual(picking["comments"][0]["comment_by"], "Administrator")
 		self.assertEqual(picking["shipping_address"]["pincode"], "10115")
 
 		rows_by_item = {row["item_code"]: row["name"] for row in picking["open_rows"]}

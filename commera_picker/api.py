@@ -282,16 +282,20 @@ def get_shipping_address(sales_order: str | None) -> dict | None:
 def get_order_comments(sales_order: str | None) -> list[dict]:
 	if not sales_order:
 		return []
-	return frappe.get_all(
+	comments = frappe.get_all(
 		"Comment",
 		filters={
 			"reference_doctype": "Sales Order",
 			"reference_name": sales_order,
 			"comment_type": "Comment",
 		},
-		fields=["content", "comment_by", "creation"],
+		fields=["content", "comment_by", "owner", "creation"],
 		order_by="creation asc",
 	)
+	for comment in comments:
+		owner = comment.pop("owner")
+		comment.comment_by = comment.comment_by or get_fullname(owner)
+	return comments
 
 
 @frappe.whitelist()
