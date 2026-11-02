@@ -31,6 +31,10 @@ def release_for_picking(sales_order: str) -> str:
 	frappe.has_permission("Sales Order", "read", sales_order, throw=True)
 	frappe.has_permission("Pick List", "create", throw=True)
 
+	if frappe.db.get_value("Sales Order", sales_order, "docstatus") != 1:
+		frappe.throw(
+			_("Submit Sales Order {0} before releasing it for picking").format(frappe.bold(sales_order))
+		)
 	if open_pick_list_name := get_open_pick_list_for_order(sales_order):
 		frappe.throw(
 			_("Sales Order {0} is already released for picking in {1}").format(
@@ -48,6 +52,59 @@ def release_for_picking(sales_order: str) -> str:
 	pick_list.pick_manually = 1
 	pick_list.insert()
 	return pick_list.name
+
+
+@frappe.whitelist(methods=["POST"])
+def release_order_for_picking(name: str) -> str:
+	return _("Released for picking in {0}").format(release_for_picking(name))
+
+
+@frappe.whitelist()
+def get_order_picking_status(sales_order: str) -> dict | None:
+	frappe.has_permission("Sales Order", "read", sales_order, throw=True)
+	pick_lists = frappe.get_all(
+		"Pick List",
+		filters=[["docstatus", "<", 2], ["Pick List Item", "sales_order", "=", sales_order]],
+		fields=["name", "docstatus", STATE_FIELD],
+		order_by="creation desc",
+		distinct=True,
+		limit=1,
+	)
+	if not pick_lists:
+		return None
+
+	pick_list = pick_lists[0]
+	order_items = frappe.get_all(
+		"Sales Order Item", filters={"parent": sales_order}, fields=["stock_qty", "picked_qty"]
+	)
+	picked_qty = sum(flt(item.picked_qty) for item in order_items)
+	if not pick_list.docstatus:
+		picked_qty += sum(
+			flt(row.picked_qty)
+			for row in frappe.get_all(
+				"Pick List Item",
+				filters={"parent": pick_list.name, "sales_order": sales_order},
+				fields=["picked_qty"],
+			)
+		)
+	picker = frappe.get_all(
+		"ToDo",
+		filters={
+			"reference_type": "Pick List",
+			"reference_name": pick_list.name,
+			"status": ("!=", "Cancelled"),
+		},
+		pluck="allocated_to",
+		order_by="creation desc",
+		limit=1,
+	)
+	return {
+		"name": pick_list.name,
+		"state": pick_list.get(STATE_FIELD),
+		"picker": get_fullname(picker[0]) if picker else None,
+		"picked_qty": picked_qty,
+		"total_qty": sum(flt(item.stock_qty) for item in order_items),
+	}
 
 
 def get_open_pick_list_for_order(sales_order: str) -> str | None:

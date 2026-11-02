@@ -7,6 +7,8 @@ Open the order before picking it,Öffnen Sie den Auftrag vor dem Kommissionieren
 Picked quantity must be between 0 and {0} for {1},Die kommissionierte Menge für {1} muss zwischen 0 und {0} liegen,
 Row {0} is not in this order,Zeile {0} gehört nicht zu diesem Auftrag,
 Sales Order {0} is already released for picking in {1},Der Auftrag {0} ist bereits in {1} zur Kommissionierung freigegeben,
+Released for picking in {0},Zur Kommissionierung freigegeben in {0},
+Submit Sales Order {0} before releasing it for picking,"Buchen Sie den Auftrag {0}, bevor Sie ihn zur Kommissionierung freigeben",
 There are no open orders to pick,Es gibt keine offenen Aufträge zum Kommissionieren,
 This order can't be picked in state {0},Dieser Auftrag kann im Status {0} nicht kommissioniert werden,
 This order is already being picked by {0},Dieser Auftrag wird bereits von {0} kommissioniert,

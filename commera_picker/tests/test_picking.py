@@ -3,7 +3,7 @@ from erpnext.stock.doctype.stock_entry.stock_entry_utils import make_stock_entry
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, flt, random_string, today
 
-from commera_picker import api
+from commera_picker import api, conditions
 from commera_picker.install import (
 	IN_PROGRESS,
 	ON_HOLD,
@@ -141,6 +141,51 @@ class TestPicking(IntegrationTestCase):
 			),
 			["Closed"],
 		)
+
+	def test_order_action_and_status_follow_the_pick(self):
+		sales_order = make_sales_order(
+			self.company, self.customer, self.store_warehouse, [(self.first_item, 2), (self.second_item, 1)]
+		)
+		self.assertTrue(conditions.can_release_for_picking("Sales Order", sales_order.name))
+		self.assertIsNone(api.get_order_picking_status(sales_order.name))
+
+		message = api.release_order_for_picking(sales_order.name)
+		pick_list_name = api.get_open_pick_list_for_order(sales_order.name)
+		self.assertIn(pick_list_name, message)
+		self.assertFalse(conditions.can_release_for_picking("Sales Order", sales_order.name))
+		self.assertEqual(
+			api.get_order_picking_status(sales_order.name),
+			{"name": pick_list_name, "state": OPEN, "picker": None, "picked_qty": 0, "total_qty": 3},
+		)
+
+		frappe.set_user(PICKER)
+		rows_by_item = {
+			row["item_code"]: row["name"] for row in api.open_pick_list(pick_list_name)["open_rows"]
+		}
+		api.set_picked_qty(pick_list_name, rows_by_item[self.first_item], 2)
+		frappe.set_user("Administrator")
+		status = api.get_order_picking_status(sales_order.name)
+		self.assertEqual(
+			(status["state"], status["picker"], status["picked_qty"]), (IN_PROGRESS, "picker-one", 2)
+		)
+
+		frappe.set_user(PICKER)
+		api.mark_unavailable(pick_list_name, rows_by_item[self.second_item])
+		frappe.set_user("Administrator")
+		status = api.get_order_picking_status(sales_order.name)
+		self.assertEqual(
+			(status["state"], status["picker"], status["picked_qty"], status["total_qty"]),
+			(READY_TO_SHIP, "picker-one", 2, 3),
+		)
+		self.assertTrue(conditions.can_release_for_picking("Sales Order", sales_order.name))
+
+	def test_draft_order_cannot_be_released(self):
+		draft = make_sales_order(
+			self.company, self.customer, self.store_warehouse, [(self.first_item, 1)], submit=False
+		)
+		self.assertFalse(conditions.can_release_for_picking("Sales Order", draft.name))
+		with self.assertRaises(frappe.ValidationError):
+			api.release_for_picking(draft.name)
 
 	def test_second_picker_gets_already_being_picked(self):
 		pick_list_name, _sales_order = self.make_released_order([(self.first_item, 1)])
@@ -305,7 +350,9 @@ def add_stock_item(company: str, warehouse: str, qty: float) -> str:
 	return item_code
 
 
-def make_sales_order(company: str, customer: str, warehouse: str, items: list[tuple[str, float]]):
+def make_sales_order(
+	company: str, customer: str, warehouse: str, items: list[tuple[str, float]], submit: bool = True
+):
 	address = frappe.get_doc(
 		{
 			"doctype": "Address",
@@ -334,7 +381,8 @@ def make_sales_order(company: str, customer: str, warehouse: str, items: list[tu
 		}
 	)
 	sales_order.insert(ignore_permissions=True)
-	sales_order.submit()
+	if submit:
+		sales_order.submit()
 	return sales_order
 
 
