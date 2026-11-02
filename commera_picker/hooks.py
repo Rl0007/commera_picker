@@ -11,6 +11,7 @@ app_license = "mit"
 required_apps = ["commera", "erpnext"]
 commera_api_version = [1]
 commera_plugin_title = "Commera Picker"
+app_logo_url = "/assets/commera_picker/images/commera_picker.svg"
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
