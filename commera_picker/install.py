@@ -5,6 +5,8 @@ from frappe.permissions import add_permission, update_permission_property
 MODULE = "Commera Picker"
 PICKER_ROLE = "Picker"
 COMMERA_USER_ROLE = "Commera User"
+COMMERA_ADMIN_ROLE = "Commera Admin"
+ADMIN_PERMISSION_TYPES = ("read", "write", "create", "submit", "cancel")
 WORKFLOW_NAME = "Pick List Picking"
 STATE_FIELD = "picking_state"
 
@@ -42,6 +44,7 @@ def after_install():
 	add_roles()
 	add_custom_fields()
 	add_picker_permissions()
+	add_admin_permissions()
 	add_workflow()
 
 
@@ -98,6 +101,17 @@ def add_picker_permissions():
 	add_permission("Pick List", PICKER_ROLE)
 	for permission_type in ("write", "submit"):
 		update_permission_property("Pick List", PICKER_ROLE, 0, permission_type, 1)
+
+
+def add_admin_permissions():
+	filters = {"parent": "Pick List", "role": COMMERA_ADMIN_ROLE, "permlevel": 0, "if_owner": 0}
+	if not frappe.db.exists("Custom DocPerm", filters):
+		add_permission("Pick List", COMMERA_ADMIN_ROLE)
+
+	granted = frappe.db.get_value("Custom DocPerm", filters, ADMIN_PERMISSION_TYPES, as_dict=True)
+	for permission_type in ADMIN_PERMISSION_TYPES:
+		if not granted[permission_type]:
+			update_permission_property("Pick List", COMMERA_ADMIN_ROLE, 0, permission_type, 1)
 
 
 def add_workflow():

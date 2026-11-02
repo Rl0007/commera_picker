@@ -5,6 +5,8 @@ from frappe.utils import add_days, flt, random_string, today
 
 from commera_picker import api, conditions
 from commera_picker.install import (
+	ADMIN_PERMISSION_TYPES,
+	COMMERA_ADMIN_ROLE,
 	IN_PROGRESS,
 	ON_HOLD,
 	OPEN,
@@ -75,6 +77,20 @@ class TestPicking(IntegrationTestCase):
 			["Commera User", PICKER_ROLE],
 		)
 		self.assertEqual(frappe.db.get_value("Workflow", WORKFLOW_NAME, "send_email_alert"), 0)
+		admin_permission = frappe.db.get_value(
+			"Custom DocPerm",
+			{"parent": "Pick List", "role": COMMERA_ADMIN_ROLE, "permlevel": 0},
+			ADMIN_PERMISSION_TYPES,
+			as_dict=True,
+		)
+		self.assertEqual(admin_permission, dict.fromkeys(ADMIN_PERMISSION_TYPES, 1))
+
+	def test_install_adds_only_the_missing_admin_rights(self):
+		filters = {"parent": "Pick List", "role": COMMERA_ADMIN_ROLE, "permlevel": 0}
+		frappe.db.set_value("Custom DocPerm", filters, "cancel", 0)
+		after_install()
+		self.assertEqual(frappe.db.get_value("Custom DocPerm", filters, "cancel"), 1)
+		self.assertEqual(frappe.db.count("Custom DocPerm", filters), 1)
 
 	def test_release_sorts_rows_into_bins_and_refuses_a_second_release(self):
 		pick_list_name, sales_order = self.make_released_order([(self.first_item, 2), (self.second_item, 1)])
