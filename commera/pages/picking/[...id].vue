@@ -47,6 +47,7 @@ const weightUom = computed(() => allRows.value.find((row) => row.weight_uom)?.we
 const comments = computed(() =>
 	(pickList.value?.comments ?? []).map((comment) => ({ ...comment, text: textFromHtml(comment.content) }))
 )
+const latestComment = computed(() => comments.value.at(-1))
 
 const selectedRow = ref(null)
 const pickedQty = ref(1)
@@ -159,18 +160,20 @@ function formatQty(qty) {
 						{{ pickList.shipping_address.country }}
 					</p>
 				</div>
-				<Button
-					v-if="comments.length"
-					variant="subtle"
-					:label="__('Info')"
-					:aria-label="__('{0} comments on this order', [comments.length])"
-					@click="commentsOpen = true"
-				>
-					<template #suffix>
-						<span class="size-2 rounded-full bg-surface-red-6" aria-hidden="true" />
-					</template>
-				</Button>
 			</div>
+			<button
+				v-if="latestComment"
+				type="button"
+				class="mt-3 w-full rounded-4 bg-surface-amber-1 p-2.5 text-left"
+				:aria-label="__('{0} comments on this order', [comments.length])"
+				@click="commentsOpen = true"
+			>
+				<p class="line-clamp-2 text-sm text-ink-amber-8">{{ latestComment.text }}</p>
+				<p v-if="comments.length > 1" class="mt-1 text-sm font-medium text-ink-amber-7">
+					{{ __('+{0} more', [comments.length - 1]) }}
+				</p>
+			</button>
+			<p v-else class="mt-3 text-sm text-ink-gray-5">{{ __('No notes on this order') }}</p>
 			<div
 				class="mt-3 flex items-center justify-between border-t border-outline-gray-1 pt-2 text-sm text-ink-gray-6"
 			>
@@ -369,7 +372,7 @@ function formatQty(qty) {
 		</template>
 	</Dialog>
 
-	<Dialog v-model:open="commentsOpen" :title="__('Info')" size="sm">
+	<Dialog v-model:open="commentsOpen" :title="__('Notes')" size="sm">
 		<template #default>
 			<ul class="flex flex-col gap-3">
 				<li v-for="comment in comments" :key="comment.creation" class="text-base text-ink-gray-8">
