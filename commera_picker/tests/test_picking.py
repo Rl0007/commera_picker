@@ -30,7 +30,7 @@ class TestPicking(IntegrationTestCase):
 		cls.company = frappe.defaults.get_global_default("company")
 		cls.abbr = frappe.get_cached_value("Company", cls.company, "abbr")
 		cls.bins = add_bin_warehouses(cls.company)
-		cls.store_warehouse = add_warehouse(cls.company, "Picking Dispatch", f"Hauptlager - {cls.abbr}")
+		cls.store_warehouse = add_warehouse(cls.company, "Picking Dispatch", f"Main Store - {cls.abbr}")
 		cls.customer = add_customer()
 		cls.first_item = add_stock_item(cls.company, cls.bins[0], 1000)
 		cls.second_item = add_stock_item(cls.company, cls.bins[1], 1000)
@@ -81,7 +81,7 @@ class TestPicking(IntegrationTestCase):
 		pick_list = frappe.get_doc("Pick List", pick_list_name)
 
 		self.assertEqual(pick_list.get(STATE_FIELD), OPEN)
-		self.assertEqual(pick_list.parent_warehouse, f"Hauptlager - {self.abbr}")
+		self.assertEqual(pick_list.parent_warehouse, f"Main Store - {self.abbr}")
 		self.assertEqual(pick_list.pick_manually, 1)
 		self.assertEqual({row.warehouse for row in pick_list.locations}, set(self.bins[:2]))
 		with self.assertRaises(frappe.ValidationError):
@@ -347,7 +347,7 @@ def add_bin_warehouses(company: str) -> list[str]:
 	root_warehouse = frappe.db.get_value(
 		"Warehouse", {"company": company, "is_group": 1, "parent_warehouse": ("is", "not set")}
 	)
-	group = add_warehouse(company, "Hauptlager", root_warehouse, is_group=1)
+	group = add_warehouse(company, "Main Store", root_warehouse, is_group=1)
 	return [add_warehouse(company, bin_code, group) for bin_code in ("A-01-1", "A-01-2", "B-02-1")]
 
 

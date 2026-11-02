@@ -1,10 +1,10 @@
 import { useMethodAction } from '@commera/admin'
 
 export const STATES = {
-	open: 'Offen',
-	onHold: 'Zurückgestellt',
-	inProgress: 'In Bearbeitung',
-	readyToShip: 'Versandfertig',
+	open: 'Open',
+	onHold: 'On Hold',
+	inProgress: 'In Progress',
+	readyToShip: 'Ready to Ship',
 }
 
 export function useLogOut() {
