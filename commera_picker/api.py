@@ -1,6 +1,7 @@
 import re
 
 import frappe
+from commera.utils import get_item_images
 from erpnext.selling.doctype.sales_order.sales_order import create_pick_list
 from erpnext.stock.utils import scan_barcode
 from frappe import _
@@ -275,9 +276,19 @@ def get_rows(pick_list) -> list[dict]:
 		for item in frappe.get_all(
 			"Item",
 			filters={"name": ("in", item_codes)},
-			fields=["name", "item_name", "image", "weight_per_unit", "weight_uom"],
+			fields=["name", "item_name", "weight_per_unit", "weight_uom"],
 		)
 	}
+	images = get_item_images(item_codes)
+	attribute_values_by_item = {}
+	for attribute in frappe.get_all(
+		"Item Variant Attribute",
+		filters={"parent": ("in", item_codes), "parenttype": "Item"},
+		fields=["parent", "attribute_value"],
+		order_by="idx asc",
+	):
+		if attribute.attribute_value:
+			attribute_values_by_item.setdefault(attribute.parent, []).append(attribute.attribute_value)
 	bin_codes = (
 		dict(
 			frappe.get_all(
@@ -312,7 +323,8 @@ def get_rows(pick_list) -> list[dict]:
 				"name": row.name,
 				"item_code": row.item_code,
 				"item_name": item.item_name or row.item_name,
-				"image": item.image,
+				"image": images.get(row.item_code),
+				"attributes": attribute_values_by_item.get(row.item_code, []),
 				"weight": flt(item.weight_per_unit),
 				"weight_uom": item.weight_uom,
 				"warehouse": row.warehouse,

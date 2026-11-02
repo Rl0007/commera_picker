@@ -230,6 +230,9 @@ function formatQty(qty) {
 								</span>
 							</div>
 							<p class="truncate text-base font-medium text-ink-gray-9">{{ row.item_name }}</p>
+							<p v-if="row.attributes.length" class="truncate text-sm text-ink-gray-7">
+								{{ row.attributes.join(' · ') }}
+							</p>
 							<p class="truncate text-sm text-ink-gray-5">
 								{{ row.item_code }}
 								<template v-if="row.weight">
@@ -273,6 +276,9 @@ function formatQty(qty) {
 				>
 					<div class="flex min-w-0 flex-1 flex-col gap-1">
 						<p class="truncate text-base font-medium text-ink-gray-9">{{ row.item_name }}</p>
+						<p v-if="row.attributes.length" class="truncate text-sm text-ink-gray-7">
+							{{ row.attributes.join(' · ') }}
+						</p>
 						<p class="truncate text-sm text-ink-gray-5">{{ row.bin }} · {{ row.item_code }}</p>
 					</div>
 					<Badge v-if="!row.picked_qty" theme="red" variant="subtle" :label="__('Not available')" />
