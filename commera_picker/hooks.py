@@ -279,3 +279,9 @@ app_logo_url = "/assets/commera_picker/images/commera_picker.svg"
 # ------------
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
+
+
+after_install = "commera_picker.install.after_install"
+after_migrate = "commera_picker.install.after_install"
+
+doc_events = {"Pick List": {"after_mapping": "commera_picker.api.set_picking_warehouse"}}
