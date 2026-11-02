@@ -1,6 +1,6 @@
 <div align="center" markdown="1">
 
-<img src="commera/plugin-icon.svg" alt="Commera Picker logo" width="80" />
+<img src="commera_picker/public/images/commera_picker.svg" alt="Commera Picker logo" width="80" />
 <h1>Commera Picker</h1>
 
 <a href="https://bwh.tech"><img src=".github/built-at-bwh.svg" alt="Built at BWH" height="28" /></a>
