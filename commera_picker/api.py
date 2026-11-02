@@ -1,3 +1,5 @@
+import re
+
 import frappe
 from erpnext.selling.doctype.sales_order.sales_order import create_pick_list
 from erpnext.stock.utils import scan_barcode
@@ -20,6 +22,7 @@ from commera_picker.install import (
 )
 
 PICKING_STATES = (OPEN, ON_HOLD, IN_PROGRESS, READY_TO_SHIP)
+SYMBOLOGY_PREFIXES = ("]C1", "]E0", "]d2")
 
 
 class PickListLockedError(frappe.ValidationError):
@@ -435,7 +438,14 @@ def mark_unavailable(name: str, row_name: str) -> dict:
 def scan(name: str, barcode: str) -> dict:
 	pick_list = get_pick_list_for_picking(name)
 	barcode = (barcode or "").strip()
-	item_code = scan_barcode(barcode).get("item_code") if barcode else None
+	item_code = next(
+		(
+			item_code
+			for candidate in get_barcode_candidates(barcode)
+			if (item_code := scan_barcode(candidate).get("item_code"))
+		),
+		None,
+	)
 	if not item_code:
 		frappe.throw(_("No article found for barcode {0}").format(frappe.bold(barcode)))
 
@@ -449,6 +459,24 @@ def scan(name: str, barcode: str) -> dict:
 			_("{0} ({1}) is not an open article in this order").format(frappe.bold(item_name), item_code)
 		)
 	return matching_row
+
+
+def get_barcode_candidates(barcode: str) -> list[str]:
+	if not barcode:
+		return []
+
+	code = barcode
+	for prefix in SYMBOLOGY_PREFIXES:
+		code = code.removeprefix(prefix)
+	code = re.sub(r"\((\d{2,4})\)", r"\1", code.replace("\x1d", ""))
+
+	candidates = [barcode, code]
+	if re.match(r"01\d{14}", code):
+		gtin = code[2:16]
+		candidates.append(gtin)
+		if gtin.startswith("0"):
+			candidates.append(gtin[1:])
+	return list(dict.fromkeys(candidates))
 
 
 @frappe.whitelist()

@@ -18,6 +18,8 @@ from commera_picker.install import (
 PICKER = "picker-one@example.com"
 SECOND_PICKER = "picker-two@example.com"
 OUTSIDER = "not-a-picker@example.com"
+GTIN = "40063810000019"
+EAN = "4006381333931"
 
 
 class TestPicking(IntegrationTestCase):
@@ -262,6 +264,35 @@ class TestPicking(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "No article found"):
 			api.scan(pick_list_name, "NO-SUCH-BARCODE")
 
+	def test_scan_reads_gs1_and_retail_barcodes(self):
+		gtin_item = add_stock_item(self.company, self.bins[0], 10, barcode=GTIN)
+		ean_item = add_stock_item(self.company, self.bins[1], 10, barcode=EAN)
+		pick_list_name, _sales_order = self.make_released_order(
+			[(gtin_item, 1), (ean_item, 1), (self.third_item, 1)]
+		)
+
+		frappe.set_user(PICKER)
+		api.open_pick_list(pick_list_name)
+		for barcode, item_code in (
+			(f"(01){GTIN}", gtin_item),
+			(f"]C101{GTIN}", gtin_item),
+			(f"01{GTIN}\x1d10ABC", gtin_item),
+			(EAN, ean_item),
+			(f"]E0{EAN}", ean_item),
+			(f"(01)0{EAN}", ean_item),
+			(f"BC-{self.third_item}", self.third_item),
+		):
+			with self.subTest(barcode=barcode):
+				self.assertEqual(api.scan(pick_list_name, barcode)["item_code"], item_code)
+
+	def test_barcode_candidates_try_the_raw_code_first(self):
+		self.assertEqual(api.get_barcode_candidates(f"(01){GTIN}"), [f"(01){GTIN}", f"01{GTIN}", GTIN])
+		self.assertEqual(
+			api.get_barcode_candidates(f"(01)0{EAN}"), [f"(01)0{EAN}", f"010{EAN}", f"0{EAN}", EAN]
+		)
+		self.assertEqual(api.get_barcode_candidates(EAN), [EAN])
+		self.assertEqual(api.get_barcode_candidates("ABC-(01)"), ["ABC-(01)", "ABC-01"])
+
 	def test_pick_next_opens_the_oldest_open_order(self):
 		frappe.db.set_value("Pick List", {STATE_FIELD: OPEN, "docstatus": 0}, STATE_FIELD, IN_PROGRESS)
 		older_pick_list, _sales_order = self.make_released_order([(self.first_item, 1)])
@@ -331,8 +362,10 @@ def add_customer() -> str:
 	return customer.name
 
 
-def add_stock_item(company: str, warehouse: str, qty: float) -> str:
+def add_stock_item(company: str, warehouse: str, qty: float, barcode: str | None = None) -> str:
 	item_code = f"PICK-{random_string(6).upper()}"
+	barcode = barcode or f"BC-{item_code}"
+	frappe.db.delete("Item Barcode", {"barcode": barcode})
 	frappe.get_doc(
 		{
 			"doctype": "Item",
@@ -343,7 +376,7 @@ def add_stock_item(company: str, warehouse: str, qty: float) -> str:
 			"is_stock_item": 1,
 			"weight_per_unit": 0.5,
 			"weight_uom": "Kg",
-			"barcodes": [{"barcode": f"BC-{item_code}"}],
+			"barcodes": [{"barcode": barcode}],
 		}
 	).insert(ignore_permissions=True)
 	make_stock_entry(item_code=item_code, target=warehouse, qty=qty, rate=10, company=company)
