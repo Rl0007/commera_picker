@@ -1,5 +1,5 @@
 <script>
-export const plugin = { label: 'Picking', icon: 'package', order: 1 }
+export const plugin = { label: 'Picking', order: 1 }
 </script>
 
 <script setup>
