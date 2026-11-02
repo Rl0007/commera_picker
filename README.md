@@ -3,7 +3,7 @@
 <img src="commera/plugin-icon.svg" alt="Commera Picker logo" width="80" />
 <h1>Commera Picker</h1>
 
-<a href="https://buildwithhussain.com"><img src=".github/built-at-bwh.svg" alt="Built at BWH" height="28" /></a>
+<a href="https://bwh.tech"><img src=".github/built-at-bwh.svg" alt="Built at BWH" height="28" /></a>
 
 **Pick store orders from a phone with ERPNext Pick Lists**
 
@@ -89,9 +89,9 @@ bench --site test_site run-tests --app commera_picker
 
 Found a bug or have a question? [Open an issue](https://github.com/Rl0007/commera_picker/issues).
 
-## About BWH Studios
+## About BWH Tech
 
-Commera Picker is developed and maintained by BWH Studios, a tech company based in Jagdalpur, Chhattisgarh,
+Commera Picker is developed and maintained by BWH Tech, a tech company based in Jagdalpur, Chhattisgarh,
 specializing in Frappe customizations and consulting.
 
 #### License
