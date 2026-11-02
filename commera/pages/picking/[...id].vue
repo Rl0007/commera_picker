@@ -285,7 +285,7 @@ function formatQty(qty) {
 
 		<div
 			v-if="canPick || canStart"
-			class="sticky bottom-0 flex gap-2 rounded-5 border border-outline-gray-1 bg-surface-base p-3"
+			class="sticky bottom-0 -mx-3 flex gap-2 border-t border-outline-gray-1 bg-surface-base p-3 sm:-mx-5 sm:px-5"
 		>
 			<template v-if="canPick">
 				<Button
