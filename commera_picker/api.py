@@ -1,4 +1,7 @@
+import re
+
 import frappe
+from commera.utils import get_item_images
 from erpnext.selling.doctype.sales_order.sales_order import create_pick_list
 from erpnext.stock.utils import scan_barcode
 from frappe import _
@@ -20,6 +23,7 @@ from commera_picker.install import (
 )
 
 PICKING_STATES = (OPEN, ON_HOLD, IN_PROGRESS, READY_TO_SHIP)
+SYMBOLOGY_PREFIXES = ("]C1", "]E0", "]d2")
 
 
 class PickListLockedError(frappe.ValidationError):
@@ -31,6 +35,10 @@ def release_for_picking(sales_order: str) -> str:
 	frappe.has_permission("Sales Order", "read", sales_order, throw=True)
 	frappe.has_permission("Pick List", "create", throw=True)
 
+	if frappe.db.get_value("Sales Order", sales_order, "docstatus") != 1:
+		frappe.throw(
+			_("Submit Sales Order {0} before releasing it for picking").format(frappe.bold(sales_order))
+		)
 	if open_pick_list_name := get_open_pick_list_for_order(sales_order):
 		frappe.throw(
 			_("Sales Order {0} is already released for picking in {1}").format(
@@ -48,6 +56,59 @@ def release_for_picking(sales_order: str) -> str:
 	pick_list.pick_manually = 1
 	pick_list.insert()
 	return pick_list.name
+
+
+@frappe.whitelist(methods=["POST"])
+def release_order_for_picking(name: str) -> str:
+	return _("Released for picking in {0}").format(release_for_picking(name))
+
+
+@frappe.whitelist()
+def get_order_picking_status(sales_order: str) -> dict | None:
+	frappe.has_permission("Sales Order", "read", sales_order, throw=True)
+	pick_lists = frappe.get_all(
+		"Pick List",
+		filters=[["docstatus", "<", 2], ["Pick List Item", "sales_order", "=", sales_order]],
+		fields=["name", "docstatus", STATE_FIELD],
+		order_by="creation desc",
+		distinct=True,
+		limit=1,
+	)
+	if not pick_lists:
+		return None
+
+	pick_list = pick_lists[0]
+	order_items = frappe.get_all(
+		"Sales Order Item", filters={"parent": sales_order}, fields=["stock_qty", "picked_qty"]
+	)
+	picked_qty = sum(flt(item.picked_qty) for item in order_items)
+	if not pick_list.docstatus:
+		picked_qty += sum(
+			flt(row.picked_qty)
+			for row in frappe.get_all(
+				"Pick List Item",
+				filters={"parent": pick_list.name, "sales_order": sales_order},
+				fields=["picked_qty"],
+			)
+		)
+	picker = frappe.get_all(
+		"ToDo",
+		filters={
+			"reference_type": "Pick List",
+			"reference_name": pick_list.name,
+			"status": ("!=", "Cancelled"),
+		},
+		pluck="allocated_to",
+		order_by="creation desc",
+		limit=1,
+	)
+	return {
+		"name": pick_list.name,
+		"state": pick_list.get(STATE_FIELD),
+		"picker": get_fullname(picker[0]) if picker else None,
+		"picked_qty": picked_qty,
+		"total_qty": sum(flt(item.stock_qty) for item in order_items),
+	}
 
 
 def get_open_pick_list_for_order(sales_order: str) -> str | None:
@@ -215,9 +276,19 @@ def get_rows(pick_list) -> list[dict]:
 		for item in frappe.get_all(
 			"Item",
 			filters={"name": ("in", item_codes)},
-			fields=["name", "item_name", "image", "weight_per_unit", "weight_uom"],
+			fields=["name", "item_name", "weight_per_unit", "weight_uom"],
 		)
 	}
+	images = get_item_images(item_codes)
+	attribute_values_by_item = {}
+	for attribute in frappe.get_all(
+		"Item Variant Attribute",
+		filters={"parent": ("in", item_codes), "parenttype": "Item"},
+		fields=["parent", "attribute_value"],
+		order_by="idx asc",
+	):
+		if attribute.attribute_value:
+			attribute_values_by_item.setdefault(attribute.parent, []).append(attribute.attribute_value)
 	bin_codes = (
 		dict(
 			frappe.get_all(
@@ -252,7 +323,8 @@ def get_rows(pick_list) -> list[dict]:
 				"name": row.name,
 				"item_code": row.item_code,
 				"item_name": item.item_name or row.item_name,
-				"image": item.image,
+				"image": images.get(row.item_code),
+				"attributes": attribute_values_by_item.get(row.item_code, []),
 				"weight": flt(item.weight_per_unit),
 				"weight_uom": item.weight_uom,
 				"warehouse": row.warehouse,
@@ -378,7 +450,14 @@ def mark_unavailable(name: str, row_name: str) -> dict:
 def scan(name: str, barcode: str) -> dict:
 	pick_list = get_pick_list_for_picking(name)
 	barcode = (barcode or "").strip()
-	item_code = scan_barcode(barcode).get("item_code") if barcode else None
+	item_code = next(
+		(
+			item_code
+			for candidate in get_barcode_candidates(barcode)
+			if (item_code := scan_barcode(candidate).get("item_code"))
+		),
+		None,
+	)
 	if not item_code:
 		frappe.throw(_("No article found for barcode {0}").format(frappe.bold(barcode)))
 
@@ -392,6 +471,24 @@ def scan(name: str, barcode: str) -> dict:
 			_("{0} ({1}) is not an open article in this order").format(frappe.bold(item_name), item_code)
 		)
 	return matching_row
+
+
+def get_barcode_candidates(barcode: str) -> list[str]:
+	if not barcode:
+		return []
+
+	code = barcode
+	for prefix in SYMBOLOGY_PREFIXES:
+		code = code.removeprefix(prefix)
+	code = re.sub(r"\((\d{2,4})\)", r"\1", code.replace("\x1d", ""))
+
+	candidates = [barcode, code]
+	if re.match(r"01\d{14}", code):
+		gtin = code[2:16]
+		candidates.append(gtin)
+		if gtin.startswith("0"):
+			candidates.append(gtin[1:])
+	return list(dict.fromkeys(candidates))
 
 
 @frappe.whitelist()

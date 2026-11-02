@@ -3,8 +3,10 @@ from erpnext.stock.doctype.stock_entry.stock_entry_utils import make_stock_entry
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, flt, random_string, today
 
-from commera_picker import api
+from commera_picker import api, conditions
 from commera_picker.install import (
+	ADMIN_PERMISSION_TYPES,
+	COMMERA_ADMIN_ROLE,
 	IN_PROGRESS,
 	ON_HOLD,
 	OPEN,
@@ -18,6 +20,8 @@ from commera_picker.install import (
 PICKER = "picker-one@example.com"
 SECOND_PICKER = "picker-two@example.com"
 OUTSIDER = "not-a-picker@example.com"
+GTIN = "40063810000019"
+EAN = "4006381333931"
 
 
 class TestPicking(IntegrationTestCase):
@@ -28,7 +32,7 @@ class TestPicking(IntegrationTestCase):
 		cls.company = frappe.defaults.get_global_default("company")
 		cls.abbr = frappe.get_cached_value("Company", cls.company, "abbr")
 		cls.bins = add_bin_warehouses(cls.company)
-		cls.store_warehouse = add_warehouse(cls.company, "Picking Dispatch", f"Hauptlager - {cls.abbr}")
+		cls.store_warehouse = add_warehouse(cls.company, "Picking Dispatch", f"Main Store - {cls.abbr}")
 		cls.customer = add_customer()
 		cls.first_item = add_stock_item(cls.company, cls.bins[0], 1000)
 		cls.second_item = add_stock_item(cls.company, cls.bins[1], 1000)
@@ -73,13 +77,27 @@ class TestPicking(IntegrationTestCase):
 			["Commera User", PICKER_ROLE],
 		)
 		self.assertEqual(frappe.db.get_value("Workflow", WORKFLOW_NAME, "send_email_alert"), 0)
+		admin_permission = frappe.db.get_value(
+			"Custom DocPerm",
+			{"parent": "Pick List", "role": COMMERA_ADMIN_ROLE, "permlevel": 0},
+			ADMIN_PERMISSION_TYPES,
+			as_dict=True,
+		)
+		self.assertEqual(admin_permission, dict.fromkeys(ADMIN_PERMISSION_TYPES, 1))
+
+	def test_install_adds_only_the_missing_admin_rights(self):
+		filters = {"parent": "Pick List", "role": COMMERA_ADMIN_ROLE, "permlevel": 0}
+		frappe.db.set_value("Custom DocPerm", filters, "cancel", 0)
+		after_install()
+		self.assertEqual(frappe.db.get_value("Custom DocPerm", filters, "cancel"), 1)
+		self.assertEqual(frappe.db.count("Custom DocPerm", filters), 1)
 
 	def test_release_sorts_rows_into_bins_and_refuses_a_second_release(self):
 		pick_list_name, sales_order = self.make_released_order([(self.first_item, 2), (self.second_item, 1)])
 		pick_list = frappe.get_doc("Pick List", pick_list_name)
 
 		self.assertEqual(pick_list.get(STATE_FIELD), OPEN)
-		self.assertEqual(pick_list.parent_warehouse, f"Hauptlager - {self.abbr}")
+		self.assertEqual(pick_list.parent_warehouse, f"Main Store - {self.abbr}")
 		self.assertEqual(pick_list.pick_manually, 1)
 		self.assertEqual({row.warehouse for row in pick_list.locations}, set(self.bins[:2]))
 		with self.assertRaises(frappe.ValidationError):
@@ -141,6 +159,51 @@ class TestPicking(IntegrationTestCase):
 			),
 			["Closed"],
 		)
+
+	def test_order_action_and_status_follow_the_pick(self):
+		sales_order = make_sales_order(
+			self.company, self.customer, self.store_warehouse, [(self.first_item, 2), (self.second_item, 1)]
+		)
+		self.assertTrue(conditions.can_release_for_picking("Sales Order", sales_order.name))
+		self.assertIsNone(api.get_order_picking_status(sales_order.name))
+
+		message = api.release_order_for_picking(sales_order.name)
+		pick_list_name = api.get_open_pick_list_for_order(sales_order.name)
+		self.assertIn(pick_list_name, message)
+		self.assertFalse(conditions.can_release_for_picking("Sales Order", sales_order.name))
+		self.assertEqual(
+			api.get_order_picking_status(sales_order.name),
+			{"name": pick_list_name, "state": OPEN, "picker": None, "picked_qty": 0, "total_qty": 3},
+		)
+
+		frappe.set_user(PICKER)
+		rows_by_item = {
+			row["item_code"]: row["name"] for row in api.open_pick_list(pick_list_name)["open_rows"]
+		}
+		api.set_picked_qty(pick_list_name, rows_by_item[self.first_item], 2)
+		frappe.set_user("Administrator")
+		status = api.get_order_picking_status(sales_order.name)
+		self.assertEqual(
+			(status["state"], status["picker"], status["picked_qty"]), (IN_PROGRESS, "picker-one", 2)
+		)
+
+		frappe.set_user(PICKER)
+		api.mark_unavailable(pick_list_name, rows_by_item[self.second_item])
+		frappe.set_user("Administrator")
+		status = api.get_order_picking_status(sales_order.name)
+		self.assertEqual(
+			(status["state"], status["picker"], status["picked_qty"], status["total_qty"]),
+			(READY_TO_SHIP, "picker-one", 2, 3),
+		)
+		self.assertTrue(conditions.can_release_for_picking("Sales Order", sales_order.name))
+
+	def test_draft_order_cannot_be_released(self):
+		draft = make_sales_order(
+			self.company, self.customer, self.store_warehouse, [(self.first_item, 1)], submit=False
+		)
+		self.assertFalse(conditions.can_release_for_picking("Sales Order", draft.name))
+		with self.assertRaises(frappe.ValidationError):
+			api.release_for_picking(draft.name)
 
 	def test_second_picker_gets_already_being_picked(self):
 		pick_list_name, _sales_order = self.make_released_order([(self.first_item, 1)])
@@ -217,6 +280,35 @@ class TestPicking(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "No article found"):
 			api.scan(pick_list_name, "NO-SUCH-BARCODE")
 
+	def test_scan_reads_gs1_and_retail_barcodes(self):
+		gtin_item = add_stock_item(self.company, self.bins[0], 10, barcode=GTIN)
+		ean_item = add_stock_item(self.company, self.bins[1], 10, barcode=EAN)
+		pick_list_name, _sales_order = self.make_released_order(
+			[(gtin_item, 1), (ean_item, 1), (self.third_item, 1)]
+		)
+
+		frappe.set_user(PICKER)
+		api.open_pick_list(pick_list_name)
+		for barcode, item_code in (
+			(f"(01){GTIN}", gtin_item),
+			(f"]C101{GTIN}", gtin_item),
+			(f"01{GTIN}\x1d10ABC", gtin_item),
+			(EAN, ean_item),
+			(f"]E0{EAN}", ean_item),
+			(f"(01)0{EAN}", ean_item),
+			(f"BC-{self.third_item}", self.third_item),
+		):
+			with self.subTest(barcode=barcode):
+				self.assertEqual(api.scan(pick_list_name, barcode)["item_code"], item_code)
+
+	def test_barcode_candidates_try_the_raw_code_first(self):
+		self.assertEqual(api.get_barcode_candidates(f"(01){GTIN}"), [f"(01){GTIN}", f"01{GTIN}", GTIN])
+		self.assertEqual(
+			api.get_barcode_candidates(f"(01)0{EAN}"), [f"(01)0{EAN}", f"010{EAN}", f"0{EAN}", EAN]
+		)
+		self.assertEqual(api.get_barcode_candidates(EAN), [EAN])
+		self.assertEqual(api.get_barcode_candidates("ABC-(01)"), ["ABC-(01)", "ABC-01"])
+
 	def test_pick_next_opens_the_oldest_open_order(self):
 		frappe.db.set_value("Pick List", {STATE_FIELD: OPEN, "docstatus": 0}, STATE_FIELD, IN_PROGRESS)
 		older_pick_list, _sales_order = self.make_released_order([(self.first_item, 1)])
@@ -271,7 +363,7 @@ def add_bin_warehouses(company: str) -> list[str]:
 	root_warehouse = frappe.db.get_value(
 		"Warehouse", {"company": company, "is_group": 1, "parent_warehouse": ("is", "not set")}
 	)
-	group = add_warehouse(company, "Hauptlager", root_warehouse, is_group=1)
+	group = add_warehouse(company, "Main Store", root_warehouse, is_group=1)
 	return [add_warehouse(company, bin_code, group) for bin_code in ("A-01-1", "A-01-2", "B-02-1")]
 
 
@@ -286,8 +378,10 @@ def add_customer() -> str:
 	return customer.name
 
 
-def add_stock_item(company: str, warehouse: str, qty: float) -> str:
+def add_stock_item(company: str, warehouse: str, qty: float, barcode: str | None = None) -> str:
 	item_code = f"PICK-{random_string(6).upper()}"
+	barcode = barcode or f"BC-{item_code}"
+	frappe.db.delete("Item Barcode", {"barcode": barcode})
 	frappe.get_doc(
 		{
 			"doctype": "Item",
@@ -298,14 +392,16 @@ def add_stock_item(company: str, warehouse: str, qty: float) -> str:
 			"is_stock_item": 1,
 			"weight_per_unit": 0.5,
 			"weight_uom": "Kg",
-			"barcodes": [{"barcode": f"BC-{item_code}"}],
+			"barcodes": [{"barcode": barcode}],
 		}
 	).insert(ignore_permissions=True)
 	make_stock_entry(item_code=item_code, target=warehouse, qty=qty, rate=10, company=company)
 	return item_code
 
 
-def make_sales_order(company: str, customer: str, warehouse: str, items: list[tuple[str, float]]):
+def make_sales_order(
+	company: str, customer: str, warehouse: str, items: list[tuple[str, float]], submit: bool = True
+):
 	address = frappe.get_doc(
 		{
 			"doctype": "Address",
@@ -334,7 +430,8 @@ def make_sales_order(company: str, customer: str, warehouse: str, items: list[tu
 		}
 	)
 	sales_order.insert(ignore_permissions=True)
-	sales_order.submit()
+	if submit:
+		sales_order.submit()
 	return sales_order
 
 

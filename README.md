@@ -18,10 +18,10 @@ Commera Picker lets warehouse staff pick store orders on a phone, inside the Com
 
 ### Order states
 
-- **Offen**: released for picking, nobody has it yet
-- **In Bearbeitung**: one picker has it open
-- **Zurückgestellt**: put on hold after some articles were picked, so any picker can finish it
-- **Versandfertig**: picked and submitted
+- **Open**: released for picking, nobody has it yet
+- **In Progress**: one picker has it open
+- **On Hold**: put on hold after some articles were picked, so any picker can finish it
+- **Ready to Ship**: picked and submitted
 
 ### Features
 
@@ -33,7 +33,6 @@ Commera Picker lets warehouse staff pick store orders on a phone, inside the Com
 - Pick in full, pick part of a row, or mark an article not available
 - Only what was picked is submitted, and the rest stays open on the Sales Order
 - A Picking card on the Sales Order shows its Pick List, the state, the picker and how much is picked
-- Server messages come in German; the picker screens are in English
 
 ### Screenshots
 
@@ -76,7 +75,7 @@ Installing adds the Picker role, a Picker role profile and the picking workflow 
 
 ### Bins
 
-Each bin is a warehouse. Put all bins in one group warehouse, for example "Hauptlager", next to the warehouse your store sells from. Commera Picker looks for stock in every warehouse of that group.
+Each bin is a warehouse. Put all bins in one group warehouse, for example "Main Store", next to the warehouse your store sells from. Commera Picker looks for stock in every warehouse of that group.
 
 ### Development
 
