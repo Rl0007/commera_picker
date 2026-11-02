@@ -32,7 +32,20 @@ Commera Picker lets warehouse staff pick store orders on a phone, inside the Com
 - Scan with a hardware scanner or the phone camera, and a wrong article shows an alert
 - Pick in full, pick part of a row, or mark an article not available
 - Only what was picked is submitted, and the rest stays open on the Sales Order
-- German translations included
+- A Picking card on the Sales Order shows its Pick List, the state, the picker and how much is picked
+- Server messages come in German; the picker screens are in English
+
+### Screenshots
+
+<p>
+	<img src="docs/implementation/media/dark-picking-list.png" alt="Order list" width="180" />
+	<img src="docs/implementation/media/dark-order-open.png" alt="Order with open articles" width="180" />
+	<img src="docs/implementation/media/dark-ready-to-ship.png" alt="Order ready to ship" width="180" />
+</p>
+<p>
+	<img src="docs/implementation/media/dark-release-for-picking.png" alt="Release for picking on the Sales Order" width="180" />
+	<img src="docs/implementation/media/dark-picking-card.png" alt="Picking card on the Sales Order" width="180" />
+</p>
 
 ### How it works
 
